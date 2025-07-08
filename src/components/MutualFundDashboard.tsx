@@ -1,19 +1,17 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, TrendingUp, Shield, Activity, DollarSign, BarChart3, Loader2 } from 'lucide-react';
 import { RollingReturnsChart } from './RollingReturnsChart';
 import { SharpeRatioComparison } from './SharpeRatioComparison';
 import { CaptureRatiosChart } from './CaptureRatiosChart';
 import { ExpenseRatioComparison } from './ExpenseRatioComparison';
 import { MetricsOverview } from './MetricsOverview';
+import VirtualizedFundSelect from './VirtualizedFundSelect';
 import { mfApiService } from '../services/mfApiService';
 import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface MutualFundData {
   id: string;
@@ -59,6 +57,9 @@ const MutualFundDashboard = () => {
   const [fundsLoading, setFundsLoading] = useState(true);
   const [availableSchemes, setAvailableSchemes] = useState<Array<{schemeCode: number; schemeName: string}>>([]);
   const { toast } = useToast();
+
+  // Debounce search term to avoid excessive filtering
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   // Load available schemes on component mount
   useEffect(() => {
@@ -123,10 +124,6 @@ const MutualFundDashboard = () => {
     }
   };
 
-  const filteredSchemes = availableSchemes.filter(scheme =>
-    scheme.schemeName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const riskFreeRate = 6.5; // Assuming 6.5% risk-free rate
 
   return (
@@ -154,29 +151,14 @@ const MutualFundDashboard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <Input
-                  placeholder="Search mutual funds..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                  disabled={fundsLoading}
-                />
-              </div>
-              <Select onValueChange={handleFundSelect} disabled={fundsLoading || loading}>
-                <SelectTrigger className="w-80">
-                  <SelectValue placeholder={fundsLoading ? "Loading funds..." : "Select a fund"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredSchemes.slice(0, 20).map((scheme) => (
-                    <SelectItem key={scheme.schemeCode} value={scheme.schemeCode.toString()}>
-                      {scheme.schemeName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <VirtualizedFundSelect
+              schemes={availableSchemes}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onFundSelect={handleFundSelect}
+              loading={fundsLoading}
+              disabled={loading}
+            />
             
             {loading && (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg flex items-center gap-2">
@@ -274,7 +256,7 @@ const MutualFundDashboard = () => {
                 Select a Mutual Fund
               </h3>
               <p className="text-gray-500">
-                Choose a mutual fund from the dropdown above to start analyzing its real-time performance
+                Use the search above to find and select a mutual fund for real-time analysis
               </p>
             </CardContent>
           </Card>
