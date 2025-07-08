@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Search, TrendingUp, Shield, Activity, DollarSign, BarChart3 } from 'lucide-react';
+import { Search, TrendingUp, Shield, Activity, DollarSign, BarChart3, Loader2 } from 'lucide-react';
 import { RollingReturnsChart } from './RollingReturnsChart';
 import { SharpeRatioComparison } from './SharpeRatioComparison';
 import { CaptureRatiosChart } from './CaptureRatiosChart';
 import { ExpenseRatioComparison } from './ExpenseRatioComparison';
 import { MetricsOverview } from './MetricsOverview';
+import { mfApiService } from '../services/mfApiService';
+import { useToast } from '@/hooks/use-toast';
 
 interface MutualFundData {
   id: string;
@@ -54,100 +56,75 @@ const MutualFundDashboard = () => {
   const [categoryBenchmark, setCategoryBenchmark] = useState<CategoryBenchmark | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
-  const [funds, setFunds] = useState<MutualFundData[]>([]);
+  const [fundsLoading, setFundsLoading] = useState(true);
+  const [availableSchemes, setAvailableSchemes] = useState<Array<{schemeCode: number; schemeName: string}>>([]);
+  const { toast } = useToast();
 
-  // Mock data - in a real application, this would come from an API
+  // Load available schemes on component mount
   useEffect(() => {
-    const mockFunds: MutualFundData[] = [
-      {
-        id: '1',
-        name: 'SBI Blue Chip Fund',
-        category: 'Large Cap',
-        nav: 45.67,
-        aum: 12500,
-        expenseRatio: 1.85,
-        returns: { '1y': 12.5, '3y': 15.2, '5y': 13.8, '10y': 14.5 },
-        sharpeRatio: 1.24,
-        upsideCapture: 95.5,
-        downsideCapture: 89.2,
-        standardDeviation: 16.5,
-        beta: 0.95,
-        alpha: 2.1
-      },
-      {
-        id: '2',
-        name: 'HDFC Mid-Cap Opportunities Fund',
-        category: 'Mid Cap',
-        nav: 89.34,
-        aum: 8750,
-        expenseRatio: 2.15,
-        returns: { '1y': 18.7, '3y': 22.1, '5y': 19.8, '10y': 17.9 },
-        sharpeRatio: 1.18,
-        upsideCapture: 112.3,
-        downsideCapture: 105.8,
-        standardDeviation: 22.1,
-        beta: 1.15,
-        alpha: 3.2
-      },
-      {
-        id: '3',
-        name: 'Axis Small Cap Fund',
-        category: 'Small Cap',
-        nav: 67.89,
-        aum: 4200,
-        expenseRatio: 2.45,
-        returns: { '1y': 25.3, '3y': 28.5, '5y': 24.1, '10y': 21.8 },
-        sharpeRatio: 1.05,
-        upsideCapture: 125.7,
-        downsideCapture: 118.4,
-        standardDeviation: 28.7,
-        beta: 1.35,
-        alpha: 4.5
+    const loadSchemes = async () => {
+      setFundsLoading(true);
+      try {
+        const schemes = await mfApiService.getAllSchemes();
+        const formattedSchemes = schemes.map(scheme => ({
+          schemeCode: scheme.schemeCode,
+          schemeName: scheme.schemeName
+        }));
+        setAvailableSchemes(formattedSchemes);
+        
+        toast({
+          title: "Funds loaded",
+          description: `${schemes.length} mutual funds loaded from MFApi`,
+        });
+      } catch (error) {
+        console.error('Failed to load schemes:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load mutual funds. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setFundsLoading(false);
       }
-    ];
-    setFunds(mockFunds);
-  }, []);
+    };
 
-  const mockCategoryBenchmarks: { [key: string]: CategoryBenchmark } = {
-    'Large Cap': {
-      category: 'Large Cap',
-      avgReturns: { '1y': 11.2, '3y': 13.8, '5y': 12.5, '10y': 13.1 },
-      avgSharpeRatio: 1.12,
-      avgUpsideCapture: 92.3,
-      avgDownsideCapture: 91.7,
-      avgExpenseRatio: 1.95,
-      avgStandardDeviation: 17.2
-    },
-    'Mid Cap': {
-      category: 'Mid Cap',
-      avgReturns: { '1y': 16.5, '3y': 19.8, '5y': 17.9, '10y': 16.2 },
-      avgSharpeRatio: 1.08,
-      avgUpsideCapture: 108.5,
-      avgDownsideCapture: 102.3,
-      avgExpenseRatio: 2.25,
-      avgStandardDeviation: 23.5
-    },
-    'Small Cap': {
-      category: 'Small Cap',
-      avgReturns: { '1y': 22.1, '3y': 25.3, '5y': 21.8, '10y': 19.5 },
-      avgSharpeRatio: 0.98,
-      avgUpsideCapture: 118.2,
-      avgDownsideCapture: 115.6,
-      avgExpenseRatio: 2.55,
-      avgStandardDeviation: 31.2
+    loadSchemes();
+  }, [toast]);
+
+  const handleFundSelect = async (schemeCode: string) => {
+    setLoading(true);
+    try {
+      const fundData = await mfApiService.convertToMutualFundData(parseInt(schemeCode));
+      if (fundData) {
+        setSelectedFund(fundData);
+        const benchmark = mfApiService.generateCategoryBenchmark(fundData.category);
+        setCategoryBenchmark(benchmark);
+        
+        toast({
+          title: "Fund loaded",
+          description: `Successfully loaded data for ${fundData.name}`,
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to load fund data. Please try another fund.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load fund:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load fund data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleFundSelect = (fundId: string) => {
-    const fund = funds.find(f => f.id === fundId);
-    if (fund) {
-      setSelectedFund(fund);
-      setCategoryBenchmark(mockCategoryBenchmarks[fund.category]);
-    }
-  };
-
-  const filteredFunds = funds.filter(fund =>
-    fund.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredSchemes = availableSchemes.filter(scheme =>
+    scheme.schemeName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const riskFreeRate = 6.5; // Assuming 6.5% risk-free rate
@@ -160,7 +137,7 @@ const MutualFundDashboard = () => {
             Mutual Fund Analysis Tool
           </h1>
           <p className="text-lg text-gray-600">
-            Compare mutual fund performance with comprehensive metrics and benchmarks
+            Real-time analysis of Indian mutual funds powered by MFApi
           </p>
         </div>
 
@@ -170,9 +147,10 @@ const MutualFundDashboard = () => {
             <CardTitle className="flex items-center gap-2">
               <Search className="h-5 w-5" />
               Fund Selection
+              {fundsLoading && <Loader2 className="h-4 w-4 animate-spin" />}
             </CardTitle>
             <CardDescription>
-              Search and select a mutual fund to analyze
+              Search and select a mutual fund to analyze (Real-time data from MFApi)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -183,23 +161,31 @@ const MutualFundDashboard = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full"
+                  disabled={fundsLoading}
                 />
               </div>
-              <Select onValueChange={handleFundSelect}>
+              <Select onValueChange={handleFundSelect} disabled={fundsLoading || loading}>
                 <SelectTrigger className="w-80">
-                  <SelectValue placeholder="Select a fund" />
+                  <SelectValue placeholder={fundsLoading ? "Loading funds..." : "Select a fund"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredFunds.map((fund) => (
-                    <SelectItem key={fund.id} value={fund.id}>
-                      {fund.name}
+                  {filteredSchemes.slice(0, 20).map((scheme) => (
+                    <SelectItem key={scheme.schemeCode} value={scheme.schemeCode.toString()}>
+                      {scheme.schemeName}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             
-            {selectedFund && (
+            {loading && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading fund data...</span>
+              </div>
+            )}
+            
+            {selectedFund && !loading && (
               <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div>
@@ -218,7 +204,7 @@ const MutualFundDashboard = () => {
           </CardContent>
         </Card>
 
-        {selectedFund && categoryBenchmark && (
+        {selectedFund && categoryBenchmark && !loading && (
           <>
             {/* Overview Metrics */}
             <MetricsOverview 
@@ -280,7 +266,7 @@ const MutualFundDashboard = () => {
           </>
         )}
 
-        {!selectedFund && (
+        {!selectedFund && !loading && !fundsLoading && (
           <Card className="text-center py-12">
             <CardContent>
               <Search className="h-16 w-16 text-gray-400 mx-auto mb-4" />
@@ -288,7 +274,21 @@ const MutualFundDashboard = () => {
                 Select a Mutual Fund
               </h3>
               <p className="text-gray-500">
-                Choose a mutual fund from the dropdown above to start analyzing its performance
+                Choose a mutual fund from the dropdown above to start analyzing its real-time performance
+              </p>
+            </CardContent>
+          </Card>
+        )}
+        
+        {fundsLoading && (
+          <Card className="text-center py-12">
+            <CardContent>
+              <Loader2 className="h-16 w-16 text-gray-400 mx-auto mb-4 animate-spin" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                Loading Mutual Funds
+              </h3>
+              <p className="text-gray-500">
+                Fetching latest mutual fund data from MFApi...
               </p>
             </CardContent>
           </Card>
